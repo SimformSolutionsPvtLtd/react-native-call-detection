@@ -19,6 +19,7 @@ public class CallDetectionManagerModule
         extends ReactContextBaseJavaModule
         implements Application.ActivityLifecycleCallbacks,
         CallDetectionPhoneStateListener.PhoneCallStateUpdate {
+    private static final String LOG_TAG = "CallDetectionManagerModule";
 
     private boolean wasAppInOffHook = false;
     private boolean wasAppInRinging = false;
@@ -38,27 +39,50 @@ public class CallDetectionManagerModule
         return "CallDetectionManagerAndroid";
     }
 
+    private void logs(final String message) {
+        String stackTraceString = "";
+        try {
+            StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
+            for (StackTraceElement e : stackTrace) {
+                stackTraceString += (e != null ? e.toString() : "null") + "\n";
+            }
+        } catch (Exception e) {
+            stackTraceString = "Exception occurred while parsing stack trace";
+        }
+        Log.e(LOG_TAG, message);
+        Log.d(LOG_TAG, stackTraceString);
+    }
+
     @ReactMethod
     public void startListener() {
-        if (activity == null) {
-            activity = getCurrentActivity();
-            activity.getApplication().registerActivityLifecycleCallbacks(this);
+        try {
+            if (activity == null) {
+                activity = getCurrentActivity();
+                activity.getApplication().registerActivityLifecycleCallbacks(this);
+            }
+
+            telephonyManager = (TelephonyManager) this.reactContext.getSystemService(
+                    Context.TELEPHONY_SERVICE);
+            callDetectionPhoneStateListener = new CallDetectionPhoneStateListener(this);
+            telephonyManager.listen(callDetectionPhoneStateListener,
+                    PhoneStateListener.LISTEN_CALL_STATE);
+        } catch (Exception e) {
+            logs(e.toString());
         }
-
-        telephonyManager = (TelephonyManager) this.reactContext.getSystemService(
-                Context.TELEPHONY_SERVICE);
-        callDetectionPhoneStateListener = new CallDetectionPhoneStateListener(this);
-        telephonyManager.listen(callDetectionPhoneStateListener,
-                PhoneStateListener.LISTEN_CALL_STATE);
-
     }
 
     @ReactMethod
     public void stopListener() {
-        telephonyManager.listen(callDetectionPhoneStateListener,
-                PhoneStateListener.LISTEN_NONE);
-        telephonyManager = null;
-        callDetectionPhoneStateListener = null;
+        try {
+            if(telephonyManager != null) {
+            telephonyManager.listen(callDetectionPhoneStateListener,
+                    PhoneStateListener.LISTEN_NONE);
+            }
+            telephonyManager = null;
+            callDetectionPhoneStateListener = null;
+        } catch (Exception e) {
+            logs(e.toString());
+        }
     }
 
     /**
@@ -87,7 +111,10 @@ public class CallDetectionManagerModule
 
     @Override
     public void onActivityResumed(Activity activity) {
-
+        if (wasAppInOffHook && jsModule != null) {
+            wasAppInOffHook = false;
+            jsModule.callStateUpdated("Disconnected", null);
+        }
     }
 
     @Override
